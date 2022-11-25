@@ -1,4 +1,5 @@
 #include <iostream>
+#include <vector>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -9,14 +10,16 @@ using namespace std;
 
 const string resourcePath = R"(C:\Code\opencvLearn\Resources\)";
 #define ESC_KEY 27
+#define Q_KEY 113
 
 void testvideo();
 void testwebcam();
-void task1();
-void task2();
-void task3();
-void task4();
-void task5();
+void task1(); // Image manipulation (convert to grayscale, blur, detect edges, dilate, erode)
+void task2(); // Image resize and crop
+void task3(); // Drawing to image
+void task4(); // Image warping
+void task5(); // Color detection (masking, HSV selectors)
+void task6(); // Shape detection
 
 Mat loadimg(const string&);
 
@@ -55,7 +58,7 @@ void task2() {
     waitKey(0);
 
 }
-// Blank image
+// Drawing to the image
 void task3() {
 
     // Colors are defined as scalar
@@ -72,8 +75,9 @@ void task3() {
     // Line
     line(img, Point(130, 296), Point(382, 296), Scalar(255,255, 255), 2);
     // PutText
-    putText(img, "STOP", Point(175,276),FONT_HERSHEY_PLAIN, 4, black, 5);
+    putText(img, "TASKS", Point(175,276),FONT_HERSHEY_PLAIN, 4, black, 5);
     imshow("Scalar", img);
+    // imwrite(resourcePath + "blank.png", img);
     waitKey(0);
 }
 
@@ -115,16 +119,16 @@ void task5() {
             smax = 240,
             vmax = 255;
 
-    namedWindow("Trackbars", (640,200));
-    createTrackbar("Hue Min", "Trackbars", &hmin, 50);
-    createTrackbar("Sat Min", "Trackbars", &smin, 179);
-    createTrackbar("Val Min", "Trackbars", &vmin, 255);
-    createTrackbar("Hue Max", "Trackbars", &hmax, 255);
+    namedWindow("Trackbars", WINDOW_NORMAL);
+    createTrackbar("Hue Min", "Trackbars", &hmin, 179);
+    createTrackbar("Hue Max", "Trackbars", &hmax, 179);
+    createTrackbar("Sat Min", "Trackbars", &smin, 255);
     createTrackbar("Sat Max", "Trackbars", &hmax, 255);
+    createTrackbar("Val Min", "Trackbars", &vmin, 255);
     createTrackbar("Val Max", "Trackbars", &hmax, 255);
     // createTrackbar("Hue Min", "Trackbars", &hmin, 179);
-    
-    while(waitKey(1) != ESC_KEY){
+
+    while(waitKey(1) != Q_KEY){
         Scalar lower(hmin, smin, vmin), upper(hmax, smax, vmax);
         imshow("Lambo", img);
         imshow("Lambo HSV", hsvImg);
@@ -133,6 +137,103 @@ void task5() {
         inRange(hsvImg, lower, upper, mask);
         imshow("Mask", mask);
     }
+    destroyWindow("Lambo");
+    destroyWindow("Lambo HSV");
+    destroyWindow("Mask");
+    destroyWindow("Trackbars");
+}
+void getContours(Mat& _img, Mat _draw) {
+
+
+    vector<vector<Point>> contours;
+    vector<Vec4i> hierarchy;
+
+    findContours(_img, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+    //drawContours(_draw, contours, -1, Scalar(255,0,255), 2);
+    vector<vector<Point>> conPoly;
+    vector<Rect> boundRect;
+    string objType;
+    for (const vector<Point>& contour : contours)
+    {
+        vector<Point> _cont;
+        auto area = contourArea(contour);
+        // cout << area << endl;
+        if(area > 1000.0) {
+            auto peri = arcLength(contour, true);
+            approxPolyDP(contour, _cont, 0.02*peri, true);
+
+            //drawContours(_draw, vector<vector<Point>>(1, contour), -1, Scalar(255, 0, 255), 2);
+            cout << "Polysize: " << _cont.size() << endl;
+            conPoly.push_back(_cont);
+            auto br = boundingRect(_cont);
+            boundRect.push_back(br);
+            int objCorner = (int)_cont.size();
+
+            if (objCorner == 3) {
+                // Triangle (3 corners)
+                objType = "triangle";
+            }
+            if (objCorner == 4) {
+                float aspRatio = (float)br.width / (float)br.height;
+                cout << aspRatio << endl;
+                // Square (4 corners)
+                if (aspRatio > 0.9f && aspRatio < 1.1f) {
+                    objType = "square";
+                } else {
+                    objType = "rect";
+                }
+            }
+            if (objCorner > 4) {
+                // More than 4
+                objType = "circle";
+            }
+            putText(_draw, objType, Point(br.x, br.y - 5),FONT_HERSHEY_PLAIN, 1, Scalar(0,0,0), 1);
+
+        }
+
+    }
+    // Draw bounding rectangles
+    for (auto &rect : boundRect) {
+        rectangle(_draw, rect, Scalar(0,0,255), 2);
+    }
+
+    // Draw contour polygons
+//    drawContours(_draw, conPoly, -1, Scalar(255, 0, 255), 2);
+
+    imshow("Contours", _draw);
+
+}
+
+void task6(){
+    cout << "Running task 6: Shape Detection" << endl;
+
+    auto img = loadimg("shapes.png");
+    imshow("Shape detection", img);
+
+    // Preprocess the image (find the shape by edge detection)
+    Mat proc;
+    cvtColor(img, proc, COLOR_BGR2GRAY);
+    // imshow("Gray", proc);
+    GaussianBlur(proc, proc, Size(3,3), 3, 0);
+    // imshow("blurred", proc);
+    Canny(proc, proc, 25, 75);
+    // imshow("canny", proc);
+    Mat kernel = getStructuringElement(MORPH_RECT, Size(3, 3));
+
+    // Fill gaps with dilation
+    dilate(proc, proc, kernel);
+    imshow("dilated", proc);
+    Mat draw;
+    getContours(proc, img);
+
+
+
+    // erode(proc, proc, kernel);
+    // imshow("eroded", proc);
+    // imshow("processedImage", proc);
+
+    waitKey(0);
+
 }
 
 void testvideo() {
@@ -183,25 +284,34 @@ void testloadimg() {
 int main() {
     // Images
     testloadimg();
-
-    // Show
-    // imshow("Image", cards);
-    // waitKey(0);
-
-    // Task 1
-    //task1();
-
-    // Task 2
-    // task2();
-
-    // Task 3
-    // task3();
-
-    // Task 4
-    // task4();
-
-    // Task 5
-    task5();
+    int key {0};
+    imshow("Main",loadimg("blank.png"));
+    while(key != ESC_KEY) {
+        // cout << key << endl;
+        switch(key){
+            case 49:
+                task1();
+                break;
+            case 50:
+                task2();
+                break;
+            case 51:
+                task3();
+                break;
+            case 52:
+                task4();
+                break;
+            case 53:
+                task5();
+                break;
+            case 54:
+                task6();
+                break;
+            default:
+                break;
+        }
+        key = waitKey(1001);
+    }
 
     return 0;
 }
